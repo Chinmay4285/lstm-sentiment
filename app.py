@@ -1,172 +1,207 @@
-"""
-Flask web application for real-time sentiment analysis
-Provides RESTful API and web interface for LSTM model
-"""
-
 from flask import Flask, render_template, request, jsonify
-import json
-from model import SentimentLSTM
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import pickle
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 
-# Initialize Flask application
 app = Flask(__name__)
 
-# Global model instance (loaded once when app starts)
+# Global variables for model and tokenizer
 model = None
+tokenizer = None
+max_len = 100
 
-def load_model():
-    """
-    Load pre-trained LSTM model on application startup
-    Global model prevents reloading on each request
-    """
-    global model
+def load_sentiment_model():
+    """Load the trained LSTM model and tokenizer"""
+    global model, tokenizer
     try:
-        model = SentimentLSTM()
-        model.load_model('sentiment_model')
-        print("✅ Model loaded successfully!")
+        # Load the trained model
+        model = load_model('models/sentiment_model.h5')
+        
+        # Load the tokenizer
+        with open('models/tokenizer.pickle', 'rb') as handle:
+            tokenizer = pickle.load(handle)
+        
+        print("✅ Model and tokenizer loaded successfully!")
         return True
     except Exception as e:
         print(f"❌ Error loading model: {e}")
         return False
 
-@app.route('/')
-def home():
-    """
-    Serve main web interface
+def clean_text(text):
+    """Clean and preprocess text"""
+    # Convert to lowercase
+    text = text.lower()
     
-    Returns:
-        Rendered HTML template for sentiment analysis interface
-    """
-    return render_template('index.html')
-
-@app.route('/analyze', methods=['POST'])
-def analyze_sentiment():
-    """
-    API endpoint for sentiment analysis
-    Accepts JSON with 'text' field and returns sentiment prediction
+    # Remove special characters and digits
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
     
-    Returns:
-        JSON response with sentiment, confidence, and probabilities
-    """
+    # Remove extra whitespace
+    text = ' '.join(text.split())
+    
+    # Tokenize and remove stopwords
     try:
-        # Extract text from JSON request
-        data = request.get_json()
-        text = data.get('text', '').strip()
+        stop_words = set(stopwords.words('english'))
+        word_tokens = word_tokenize(text)
+        filtered_text = [w for w in word_tokens if w not in stop_words]
+        text = ' '.join(filtered_text)
+    except:
+        # If NLTK data not available, just return cleaned text
+        pass
+    
+    return text
+
+def predict_sentiment(text):
+    """Predict sentiment for given text"""
+    global model, tokenizer, max_len
+    
+    if model is None or tokenizer is None:
+        return {"error": "Model not loaded"}
+    
+    try:
+        # Clean the text
+        cleaned_text = clean_text(text)
         
-        # Validate input
-        if not text:
-            return jsonify({'error': 'No text provided'}), 400
+        # Convert text to sequence
+        sequences = tokenizer.texts_to_sequences([cleaned_text])
         
-        if len(text) > 1000:  # Prevent extremely long inputs
-            return jsonify({'error': 'Text too long (max 1000 characters)'}), 400
+        # Pad sequence
+        padded_sequences = pad_sequences(sequences, maxlen=max_len)
         
-        # Check if model is loaded
-        if model is None:
-            return jsonify({'error': 'Model not loaded'}), 500
+        # Make prediction
+        prediction = model.predict(padded_sequences, verbose=0)[0]
         
-        # Make prediction using LSTM model
-        predictions = model.predict([text])
-        result = predictions[0]  # Get first (and only) prediction
+        # Map predictions to labels
+        sentiment_labels = ['negative', 'neutral', 'positive']
+        predicted_class = np.argmax(prediction)
+        confidence = float(prediction[predicted_class])
         
-        # Format response with detailed information
-        response = {
-            'text': text,
-            'sentiment': result['sentiment'],
-            'confidence': round(result['confidence'], 3),
-            'probabilities': {
-                'negative': round(result['probabilities']['negative'], 3),
-                'neutral': round(result['probabilities']['neutral'], 3),
-                'positive': round(result['probabilities']['positive'], 3)
-            },
+        # Create probabilities dictionary
+        probabilities = {
+            'negative': float(prediction[0]),
+            'neutral': float(prediction[1]),
+            'positive': float(prediction[2])
+        }
+        
+        return {
+            'sentiment': sentiment_labels[predicted_class],
+            'confidence': confidence,
+            'probabilities': probabilities,
             'status': 'success'
         }
         
-        return jsonify(response)
-    
     except Exception as e:
-        # Log error and return error response
-        print(f"Error in sentiment analysis: {e}")
-        return jsonify({
-            'error': 'Internal server error',
-            'status': 'error'
-        }), 500
+        return {'error': str(e), 'status': 'error'}
+
+@app.route('/')
+def index():
+    """Render the main page"""
+    return render_template('index.html')
+
+@app.route('/analyze', methods=['POST'])
+def analyze():
+    """Analyze sentiment for single text"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            return jsonify({'error': 'No text provided', 'status': 'error'}), 400
+        
+        text = data['text'].strip()
+        
+        if not text:
+            return jsonify({'error': 'Empty text provided', 'status': 'error'}), 400
+        
+        result = predict_sentiment(text)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': str(e), 'status': 'error'}), 500
 
 @app.route('/batch_analyze', methods=['POST'])
 def batch_analyze():
-    """
-    API endpoint for analyzing multiple texts at once
-    Accepts JSON with 'texts' array
-    
-    Returns:
-        JSON array with sentiment analysis for each text
-    """
+    """Analyze sentiment for multiple texts"""
     try:
         data = request.get_json()
-        texts = data.get('texts', [])
         
-        # Validate input
-        if not texts or not isinstance(texts, list):
-            return jsonify({'error': 'No texts provided or invalid format'}), 400
+        if not data or 'texts' not in data:
+            return jsonify({'error': 'No texts provided', 'status': 'error'}), 400
         
-        if len(texts) > 50:  # Limit batch size
-            return jsonify({'error': 'Too many texts (max 50)'}), 400
+        texts = data['texts']
         
-        if model is None:
-            return jsonify({'error': 'Model not loaded'}), 500
+        if not isinstance(texts, list):
+            return jsonify({'error': 'Texts must be a list', 'status': 'error'}), 400
         
-        # Analyze all texts at once (efficient batch processing)
-        predictions = model.predict(texts)
-        
-        # Format results
         results = []
-        for i, (text, pred) in enumerate(zip(texts, predictions)):
-            results.append({
-                'index': i,
-                'text': text[:100] + '...' if len(text) > 100 else text,
-                'sentiment': pred['sentiment'],
-                'confidence': round(pred['confidence'], 3),
-                'probabilities': {
-                    'negative': round(pred['probabilities']['negative'], 3),
-                    'neutral': round(pred['probabilities']['neutral'], 3),
-                    'positive': round(pred['probabilities']['positive'], 3)
-                }
-            })
+        for text in texts:
+            if text.strip():
+                result = predict_sentiment(text)
+                results.append({
+                    'text': text,
+                    'analysis': result
+                })
+            else:
+                results.append({
+                    'text': text,
+                    'analysis': {'error': 'Empty text', 'status': 'error'}
+                })
         
         return jsonify({
             'results': results,
-            'total_analyzed': len(texts),
+            'total_analyzed': len(results),
             'status': 'success'
         })
-    
+        
     except Exception as e:
-        print(f"Error in batch analysis: {e}")
-        return jsonify({
-            'error': 'Internal server error',
-            'status': 'error'
-        }), 500
+        return jsonify({'error': str(e), 'status': 'error'}), 500
 
 @app.route('/health')
-def health_check():
-    """
-    Health check endpoint for monitoring
+def health():
+    """Health check endpoint"""
+    model_status = "loaded" if model is not None else "not_loaded"
+    tokenizer_status = "loaded" if tokenizer is not None else "not_loaded"
     
-    Returns:
-        JSON with service status and model availability
-    """
-    model_status = 'loaded' if model is not None else 'not_loaded'
     return jsonify({
         'status': 'healthy',
         'model_status': model_status,
+        'tokenizer_status': tokenizer_status,
         'service': 'lstm_sentiment_analysis'
     })
 
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Endpoint not found', 'status': 'error'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error', 'status': 'error'}), 500
+
 if __name__ == '__main__':
-    print("🌐 Starting LSTM Sentiment Analysis Web Service...")
+    print("🚀 Starting LSTM Sentiment Analysis Web Application...")
     
-    # Load model before starting server
-    if load_model():
-        print("🚀 Starting Flask server...")
-        # Run in debug mode for development
-        app.run(host='0.0.0.0', port=5000, debug=True)
+    # Download NLTK data if needed
+    try:
+        nltk.download('punkt', quiet=True)
+        nltk.download('stopwords', quiet=True)
+        print("✅ NLTK data ready")
+    except:
+        print("⚠️ NLTK data download failed, continuing without stopwords")
+    
+    # Load the model
+    if load_sentiment_model():
+        print("🌐 Starting Flask server...")
+        print("📱 Open your browser and go to: http://localhost:5000")
+        print("🛑 Press Ctrl+C to stop the server")
+        
+        app.run(debug=True, host='0.0.0.0', port=5000)
     else:
-        print("❌ Cannot start server - model loading failed!")
-        print("Make sure you've trained the model by running: python train.py")
+        print("❌ Failed to load model. Please ensure you have:")
+        print("   1. Trained your model using: python train.py")
+        print("   2. Model files exist in the 'models/' directory")
+        print("   3. Files: sentiment_model.h5 and tokenizer.pickle")

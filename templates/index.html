@@ -1,381 +1,350 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Meta information and character encoding -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🧠 LSTM Sentiment Analysis</title>
-    
-    <!-- Bootstrap CSS for responsive design and styling -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Chart.js for visualization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    
-    <!-- Custom styling -->
     <style>
-        /* Custom CSS for enhanced visual appeal */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
         }
-        
-        .main-container {
-            background: rgba(255, 255, 255, 0.95);
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
             border-radius: 20px;
+            overflow: hidden;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            margin-top: 2rem;
-            padding: 2rem;
         }
-        
-        .sentiment-positive { color: #28a745; font-weight: bold; }
-        .sentiment-negative { color: #dc3545; font-weight: bold; }
-        .sentiment-neutral { color: #6c757d; font-weight: bold; }
-        
-        #analyzeBtn {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            border: none;
-            transition: transform 0.2s;
+
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
         }
-        
-        #analyzeBtn:hover {
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.1; }
+            50% { transform: scale(1.1); opacity: 0.2; }
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .input-section {
+            margin-bottom: 40px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 1.1em;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 120px;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
             transform: translateY(-2px);
         }
-        
-        .result-card {
-            border-left: 4px solid #667eea;
-            background: #f8f9fa;
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
         }
-        
-        #loadingSpinner {
+
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .clear-btn {
+            background: linear-gradient(135deg, #718096, #4a5568);
+        }
+
+        .results-section {
             display: none;
+            background: #f7fafc;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 30px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid #667eea;
+        }
+
+        .sentiment-indicator {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+
+        .sentiment-positive {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #68d391;
+        }
+
+        .sentiment-negative {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+
+        .sentiment-neutral {
+            background: #fef5e7;
+            color: #744210;
+            border: 1px solid #ecc94b;
+        }
+
+        .confidence-score {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4a5568;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .examples {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .examples h3 {
+            color: #234e52;
+            margin-bottom: 15px;
+        }
+
+        .example-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .example-btn {
+            background: #81e6d9;
+            color: #234e52;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .example-btn:hover {
+            background: #4fd1c7;
+            transform: translateY(-1px);
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #fc8181;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.2em;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+
+        .batch-section {
+            margin-top: 40px;
+            padding-top: 40px;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .batch-results {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .batch-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #e2e8f0;
+        }
+
+        .batch-text {
+            font-style: italic;
+            color: #718096;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-8 col-lg-6">
-                <!-- Main application container -->
-                <div class="main-container">
-                    <!-- Header section -->
-                    <div class="text-center mb-4">
-                        <h1 class="display-6 mb-3">🧠 LSTM Sentiment Analysis</h1>
-                        <p class="text-muted">Powered by Bidirectional LSTM Neural Networks</p>
-                    </div>
-                    
-                    <!-- Input form for text analysis -->
-                    <form id="sentimentForm">
-                        <div class="mb-3">
-                            <label for="textInput" class="form-label">Enter text to analyze:</label>
-                            <!-- Text input area with placeholder and validation -->
-                            <textarea 
-                                class="form-control" 
-                                id="textInput" 
-                                rows="4" 
-                                placeholder="Type or paste your text here... (e.g., 'I love this product!')"
-                                maxlength="1000"
-                                required>
-                            </textarea>
-                            <!-- Character counter for user feedback -->
-                            <div class="form-text">
-                                <span id="charCount">0</span>/1000 characters
-                            </div>
-                        </div>
-                        
-                        <!-- Submit button with loading spinner -->
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">
-                                <span id="buttonText">🔍 Analyze Sentiment</span>
-                                <span id="loadingSpinner" class="spinner-border spinner-border-sm ms-2"></span>
-                            </button>
-                        </div>
-                    </form>
-                    
-                    <!-- Results section (initially hidden) -->
-                    <div id="results" class="mt-4" style="display: none;">
-                        <div class="result-card card p-3">
-                            <h5 class="card-title">Analysis Results:</h5>
-                            
-                            <!-- Main sentiment result display -->
-                            <div class="mb-3">
-                                <h4>Sentiment: <span id="sentimentResult"></span></h4>
-                                <p class="mb-1">Confidence: <span id="confidenceScore"></span></p>
-                                
-                                <!-- Confidence bar visualization -->
-                                <div class="progress mb-3">
-                                    <div class="progress-bar" id="confidenceBar"></div>
-                                </div>
-                            </div>
-                            
-                            <!-- Probability distribution chart -->
-                            <div class="mb-3">
-                                <h6>Probability Distribution:</h6>
-                                <canvas id="probabilityChart" width="400" height="200"></canvas>
-                            </div>
-                            
-                            <!-- Detailed probability breakdown -->
-                            <div class="row text-center">
-                                <div class="col-4">
-                                    <div class="sentiment-negative">
-                                        <div>😞 Negative</div>
-                                        <div id="negativeProb">0%</div>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="sentiment-neutral">
-                                        <div>😐 Neutral</div>
-                                        <div id="neutralProb">0%</div>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="sentiment-positive">
-                                        <div>😊 Positive</div>
-                                        <div id="positiveProb">0%</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Error message display -->
-                    <div id="errorMessage" class="alert alert-danger mt-3" style="display: none;"></div>
-                </div>
-            </div>
+        <div class="header">
+            <h1>🧠 LSTM Sentiment Analysis</h1>
+            <p>Advanced Deep Learning Powered Sentiment Detection with Bidirectional LSTM</p>
         </div>
-    </div>
 
-    <script>
-        // Global variable for chart instance management
-        let probabilityChart = null;
-        
-        // Initialize application when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('sentimentForm');
-            const textInput = document.getElementById('textInput');
-            const charCount = document.getElementById('charCount');
-            const analyzeBtn = document.getElementById('analyzeBtn');
-            const buttonText = document.getElementById('buttonText');
-            const loadingSpinner = document.getElementById('loadingSpinner');
-            const results = document.getElementById('results');
-            const errorMessage = document.getElementById('errorMessage');
-            
-            // Character counter for text input
-            textInput.addEventListener('input', function() {
-                const count = this.value.length;
-                charCount.textContent = count;
-                
-                // Change color based on character limit
-                if (count > 900) {
-                    charCount.style.color = '#dc3545'; // Red when approaching limit
-                } else if (count > 750) {
-                    charCount.style.color = '#fd7e14'; // Orange warning
-                } else {
-                    charCount.style.color = '#6c757d'; // Normal gray
-                }
-            });
-            
-            // Form submission handler
-            form.addEventListener('submit', function(e) {
-                e.preventDefault(); // Prevent default form submission
-                
-                const text = textInput.value.trim();
-                
-                // Input validation
-                if (!text) {
-                    showError('Please enter some text to analyze.');
-                    return;
-                }
-                
-                // Start loading state
-                setLoadingState(true);
-                hideError();
-                hideResults();
-                
-                // Send analysis request to API
-                fetch('/analyze', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ text: text })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    setLoadingState(false);
+        <div class="main-content">
+            <!-- Single Text Analysis -->
+            <div class="input-section">
+                <div class="input-group">
+                    <label for="textInput">✍️ Enter your text for sentiment analysis:</label>
+                    <textarea 
+                        id="textInput" 
+                        placeholder="Type or paste your text here... e.g., 'I absolutely love this new product! It exceeded all my expectations.'"
+                    ></textarea>
                     
-                    if (data.error) {
-                        showError(data.error);
-                    } else {
-                        displayResults(data);
-                    }
-                })
-                .catch(error => {
-                    setLoadingState(false);
-                    console.error('Error:', error);
-                    showError('An error occurred while analyzing the text. Please try again.');
-                });
-            });
-            
-            /**
-             * Set loading state for button and UI
-             * @param {boolean} loading - Whether to show loading state
-             */
-            function setLoadingState(loading) {
-                if (loading) {
-                    analyzeBtn.disabled = true;
-                    buttonText.style.display = 'none';
-                    loadingSpinner.style.display = 'inline-block';
-                } else {
-                    analyzeBtn.disabled = false;
-                    buttonText.style.display = 'inline';
-                    loadingSpinner.style.display = 'none';
-                }
-            }
-            
-            /**
-             * Display sentiment analysis results
-             * @param {Object} data - API response data
-             */
-            function displayResults(data) {
-                // Update sentiment result with appropriate styling
-                const sentimentResult = document.getElementById('sentimentResult');
-                sentimentResult.textContent = capitalizeFirst(data.sentiment);
-                sentimentResult.className = `sentiment-${data.sentiment}`;
-                
-                // Update confidence score and progress bar
-                const confidence = Math.round(data.confidence * 100);
-                document.getElementById('confidenceScore').textContent = confidence + '%';
-                
-                const confidenceBar = document.getElementById('confidenceBar');
-                confidenceBar.style.width = confidence + '%';
-                confidenceBar.className = `progress-bar bg-${getSentimentColor(data.sentiment)}`;
-                
-                // Update individual probability percentages
-                document.getElementById('negativeProb').textContent = 
-                    Math.round(data.probabilities.negative * 100) + '%';
-                document.getElementById('neutralProb').textContent = 
-                    Math.round(data.probabilities.neutral * 100) + '%';
-                document.getElementById('positiveProb').textContent = 
-                    Math.round(data.probabilities.positive * 100) + '%';
-                
-                // Create/update probability chart
-                updateProbabilityChart(data.probabilities);
-                
-                // Show results
-                results.style.display = 'block';
-                
-                // Smooth scroll to results
-                results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-            
-            /**
-             * Update the probability distribution chart
-             * @param {Object} probabilities - Probability scores for each sentiment
-             */
-            function updateProbabilityChart(probabilities) {
-                const ctx = document.getElementById('probabilityChart').getContext('2d');
-                
-                // Destroy existing chart if it exists
-                if (probabilityChart) {
-                    probabilityChart.destroy();
-                }
-                
-                // Create new chart with probability data
-                probabilityChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['😞 Negative', '😐 Neutral', '😊 Positive'],
-                        datasets: [{
-                            label: 'Probability',
-                            data: [
-                                probabilities.negative,
-                                probabilities.neutral,
-                                probabilities.positive
-                            ],
-                            backgroundColor: [
-                                'rgba(220, 53, 69, 0.7)',   // Red for negative
-                                'rgba(108, 117, 125, 0.7)', // Gray for neutral
-                                'rgba(40, 167, 69, 0.7)'    // Green for positive
-                            ],
-                            borderColor: [
-                                'rgba(220, 53, 69, 1)',
-                                'rgba(108, 117, 125, 1)',
-                                'rgba(40, 167, 69, 1)'
-                            ],
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false // Hide legend to save space
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: 1,
-                                ticks: {
-                                    callback: function(value) {
-                                        return Math.round(value * 100) + '%';
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-            
-            /**
-             * Show error message
-             * @param {string} message - Error message to display
-             */
-            function showError(message) {
-                errorMessage.textContent = message;
-                errorMessage.style.display = 'block';
-            }
-            
-            /**
-             * Hide error message
-             */
-            function hideError() {
-                errorMessage.style.display = 'none';
-            }
-            
-            /**
-             * Hide results section
-             */
-            function hideResults() {
-                results.style.display = 'none';
-            }
-            
-            /**
-             * Capitalize first letter of string
-             * @param {string} str - String to capitalize
-             * @returns {string} Capitalized string
-             */
-            function capitalizeFirst(str) {
-                return str.charAt(0).toUpperCase() + str.slice(1);
-            }
-            
-            /**
-             * Get Bootstrap color class for sentiment
-             * @param {string} sentiment - Sentiment type
-             * @returns {string} Bootstrap color class
-             */
-            function getSentimentColor(sentiment) {
-                switch(sentiment) {
-                    case 'positive': return 'success';
-                    case 'negative': return 'danger';
-                    case 'neutral': return 'secondary';
-                    default: return 'primary';
-                }
-            }
-        });
-    </script>
-</body>
-</html>
+                    <div class="button-group">
+                        <button onclick="analyzeSentiment()" id="analyzeBtn">
+                            🔍 Analyze Sentiment
+                        </button>
+                        <button onclick="clearText()" class="clear-btn">
+                            🗑️ Clear Text
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Example texts -->
+                <div class="examples">
+                    <h3>📝 Try these examples:</h3>
+                    <div class="example-buttons">
+                        <span class="example-btn" onclick="setExample('I absolutely love this new product! It exceeded all my expectations.')">Positive Example</span>
+                        <span class="example-btn" onclick="setExample('This is terrible quality. I want my money back!')">Negative Example</span>
+                        <span class="example-btn" onclick="setExample('The product is okay, nothing special but decent for the price.')">Neutral Example</span>
+                        <span class="example-btn" onclick="setExample('The movie was amazing!
